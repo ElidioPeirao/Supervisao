@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard do Supervisor - Almoxarifado</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .kpi-card, .chart-card, .table-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+    <div id="login-view" class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-white p-8 rounded-lg shadow-lg">
+            <h1 class="text-2xl font-bold text-gray-800 text-center mb-2">Acesso do Supervisor</h1>
+            <p class="text-center text-gray-500 mb-6">Insira sua matrícula para acessar o painel.</p>
+            <form id="supervisor-login-form">
+                <div class="mb-4">
+                    <label for="supervisor-matricula" class="block text-sm font-medium text-gray-700">Matrícula</label>
+                    <input type="text" id="supervisor-matricula" class="mt-1 p-3 w-full border border-gray-300 rounded-md shadow-sm" required>
+                </div>
+                <p id="login-error" class="text-red-600 text-sm font-semibold mt-1 hidden">Acesso negado. Matrícula não encontrada ou sem permissão de supervisor.</p>
+                <button type="submit" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-5 rounded-lg">
+                    <i class="fas fa-sign-in-alt mr-2"></i>Entrar
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="container mx-auto p-4 sm:p-6 lg:p-8 hidden">
+        
+        <header class="mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold text-gray-800 flex items-center">
+                        <i class="fas fa-chart-pie mr-4 text-blue-600"></i>Dashboard do Supervisor
+                    </h1>
+                    <p class="text-gray-500 mt-2">Bem-vindo, <strong id="supervisor-name"></strong>!</p>
+                </div>
+                <div class="mt-4 sm:mt-0 flex items-center gap-4">
+                    <button id="download-inventory-btn" class="bg-gray-700 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                        <i class="fas fa-download mr-2"></i>Download Inventário
+                    </button>
+                    <button id="logout-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Sair
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section id="approvals-section" class="mb-8">
+                <div class="bg-white p-6 rounded-lg shadow-md table-card">
+                    <h3 class="font-semibold text-lg text-gray-700 mb-4">
+                        <i class="fas fa-check-double text-orange-500 mr-2"></i>Aprovações de Compra Pendentes
+                    </h3>
+                    <div class="overflow-y-auto max-h-96">
+                        <table class="w-full text-sm">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-2 text-left">Data</th>
+                                    <th class="px-4 py-2 text-left">Solicitante</th>
+                                    <th class="px-4 py-2 text-left">Item</th>
+                                    <th class="px-4 py-2 text-left">Descrição</th>
+                                    <th class="px-4 py-2 text-center">Link</th>
+                                    <th class="px-4 py-2 text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="approvals-table-body"></tbody>
+                        </table>
+                        <p id="approvals-placeholder" class="text-center py-8 text-gray-400">Nenhuma aprovação pendente.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="kpi-section" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div id="kpi-total-itens-card" class="kpi-card bg-white border-l-4 border-blue-500 rounded-lg shadow-md p-6 flex items-center justify-between cursor-pointer">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 uppercase">Total de Itens</p>
+                        <p id="kpi-total-itens" class="text-3xl font-bold text-gray-800">0</p>
+                    </div>
+                    <i class="fas fa-boxes text-4xl text-blue-200"></i>
+                </div>
+                <div id="kpi-retiradas-pendentes-card" class="kpi-card bg-white border-l-4 border-yellow-500 rounded-lg shadow-md p-6 flex items-center justify-between cursor-pointer">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 uppercase">Retiradas Pendentes</p>
+                        <p id="kpi-retiradas-pendentes" class="text-3xl font-bold text-gray-800">0</p>
+                    </div>
+                    <i class="fas fa-hourglass-half text-4xl text-yellow-200"></i>
+                </div>
+                <div id="kpi-solicitacoes-compra-card" class="kpi-card bg-white border-l-4 border-purple-500 rounded-lg shadow-md p-6 flex items-center justify-between cursor-pointer">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 uppercase">Histórico de Compras</p>
+                        <p id="kpi-solicitacoes-compra" class="text-3xl font-bold text-gray-800">0</p>
+                    </div>
+                    <i class="fas fa-archive text-4xl text-purple-200"></i>
+                </div>
+                <div id="kpi-total-professores-card" class="kpi-card bg-white border-l-4 border-green-500 rounded-lg shadow-md p-6 flex items-center justify-between cursor-pointer">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 uppercase">Colaboradores Ativos</p>
+                        <p id="kpi-total-professores" class="text-3xl font-bold text-gray-800">0</p>
+                    </div>
+                    <i class="fas fa-users text-4xl text-green-200"></i>
+                </div>
+            </section>
+
+            <section class="grid grid-cols-1 lg:grid-cols-5 gap-8 mb-8">
+                <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow-md chart-card">
+                    <h3 class="font-semibold text-lg text-gray-700 mb-4">Volume de Retiradas (Últimos 30 dias)</h3>
+                    <canvas id="retiradas-chart"></canvas>
+                </div>
+                <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md chart-card">
+                    <h3 class="font-semibold text-lg text-gray-700 mb-4">Distribuição de Itens por Categoria</h3>
+                    <canvas id="categorias-chart"></canvas>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="details-modal" class="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center p-4 hidden z-50 transition-opacity duration-300">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-4xl max-h-[85vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 border-b pb-3">
+                <h2 id="details-modal-title" class="text-xl font-bold text-gray-800">Detalhes</h2>
+                <button id="close-details-modal-btn" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div id="details-modal-content" class="overflow-y-auto">
+                <!-- Conteúdo injetado via JS -->
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, query, where, getDocs, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyCiSA3hcGqJ4BKtkxNrS9DBrEP4NcpxAVo",
+            authDomain: "almoxeprojects.firebaseapp.com",
+            projectId: "almoxeprojects",
+            storageBucket: "almoxeprojects.appspot.com",
+            messagingSenderId: "933670924253",
+            appId: "1:933670924253:web:64f137671adeab3f201034",
+            measurementId: "G-WDEKYB0Y20"
+        };
+        const appId = 'almoxarifado-app-global';
+
+        let app, db;
+        let retiradasChart, categoriasChart;
+        let currentSupervisor = null;
+        
+        const rawData = {
+            itens: [],
+            categories: [],
+            retiradas: [],
+            professores: [],
+            purchaseRequests: [],
+        };
+
+        const loginView = document.getElementById('login-view');
+        const dashboardView = document.getElementById('dashboard-view');
+        const loginForm = document.getElementById('supervisor-login-form');
+        const matriculaInput = document.getElementById('supervisor-matricula');
+        const loginError = document.getElementById('login-error');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                
+                document.getElementById('kpi-total-itens-card').addEventListener('click', () => showAllItemsModal());
+                document.getElementById('kpi-retiradas-pendentes-card').addEventListener('click', () => showDetailsModal('Retiradas Pendentes', renderPendingRetiradasTable(rawData.retiradas.filter(r => r.status === 'Pendente' || r.status === 'Devolvido Parcialmente'))));
+                document.getElementById('kpi-solicitacoes-compra-card').addEventListener('click', () => showPurchaseHistoryModal());
+                document.getElementById('kpi-total-professores-card').addEventListener('click', () => showDetailsModal('Colaboradores Cadastrados', renderAllProfessorsTable(rawData.professores)));
+                document.getElementById('close-details-modal-btn').addEventListener('click', () => document.getElementById('details-modal').classList.add('hidden'));
+                document.getElementById('download-inventory-btn').addEventListener('click', downloadInventory);
+
+                document.getElementById('details-modal-content').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('professor-history-link')) {
+                        e.preventDefault();
+                        const professorId = e.target.dataset.professorId;
+                        const professorName = e.target.dataset.professorName;
+                        showProfessorWithdrawalHistory(professorId, professorName);
+                    }
+                });
+
+            } catch (error) {
+                console.error("Falha ao inicializar o Firebase:", error);
+                document.body.innerHTML = `<div class="text-center p-8 bg-red-100 text-red-700">Erro de conexão com o banco de dados.</div>`;
+            }
+        });
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const matricula = matriculaInput.value.trim();
+            if (!matricula) return;
+
+            const q = query(getCollectionRef('professores'), where("matricula", "==", matricula), where("isSupervisor", "==", true));
+            const querySnapshot = await getDocs(q);
+            
+            if (querySnapshot.empty) {
+                loginError.classList.remove('hidden');
+            } else {
+                loginError.classList.add('hidden');
+                currentSupervisor = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
+                
+                loginView.classList.add('hidden');
+                dashboardView.classList.remove('hidden');
+                document.getElementById('supervisor-name').textContent = currentSupervisor.name;
+                
+                attachListeners();
+            }
+        });
+        
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            location.reload();
+        });
+
+        const getCollectionRef = (name) => collection(db, 'almoxarifado', appId, name);
+
+        function attachListeners() {
+            if (!db) return;
+            const collections = {
+                'itens': 'itens',
+                'categories': 'categories',
+                'retiradas': 'retiradas',
+                'professores': 'professores',
+                'solicitacoes_compra': 'purchaseRequests',
+            };
+            
+            for (const [path, key] of Object.entries(collections)) {
+                onSnapshot(getCollectionRef(path), (snapshot) => {
+                    rawData[key] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    processAndRenderAllData();
+                });
+            }
+        }
+
+        function processAndRenderAllData() {
+            if (!currentSupervisor) return;
+
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            const filteredRetiradas = rawData.retiradas.filter(r => new Date(r.dataRetirada) >= thirtyDaysAgo);
+            
+            updateKpiCards(rawData.itens, rawData.retiradas, rawData.purchaseRequests, rawData.professores);
+            renderRetiradasChart(filteredRetiradas);
+            renderCategoriasChart(rawData.itens, rawData.categories);
+            renderApprovalQueue(rawData.purchaseRequests);
+        }
+        
+        function updateKpiCards(itens, retiradas, purchaseRequests, professores) {
+            document.getElementById('kpi-total-itens').textContent = itens.length;
+            document.getElementById('kpi-total-professores').textContent = professores.length;
+            
+            const pendentes = retiradas.filter(r => r.status === 'Pendente' || r.status === 'Devolvido Parcialmente').length;
+            document.getElementById('kpi-retiradas-pendentes').textContent = pendentes;
+            
+            const finalizadas = purchaseRequests.filter(s => s.status === 'Entregue' || s.status === 'Rejeitado').length;
+            document.getElementById('kpi-solicitacoes-compra').textContent = finalizadas;
+        }
+
+        function renderApprovalQueue(purchaseRequests) {
+            const tbody = document.getElementById('approvals-table-body');
+            const placeholder = document.getElementById('approvals-placeholder');
+            tbody.innerHTML = '';
+
+            const pending = purchaseRequests.filter(req => req.status === 'Pendente de Aprovação');
+            placeholder.classList.toggle('hidden', pending.length > 0);
+
+            pending.forEach(req => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b hover:bg-gray-50 cursor-pointer request-row';
+                tr.dataset.requestId = req.id;
+                
+                const linkHtml = req.itemLink 
+                    ? `<a href="${req.itemLink}" target="_blank" class="text-blue-500 hover:underline" onclick="event.stopPropagation()"><i class="fas fa-link"></i> Ver Link</a>` 
+                    : 'N/A';
+
+                tr.innerHTML = `
+                    <td class="px-4 py-3 text-gray-600">${req.timestamp?.toDate().toLocaleDateString('pt-BR') || 'N/A'}</td>
+                    <td class="px-4 py-3 font-medium">${req.solicitanteName}</td>
+                    <td class="px-4 py-3">${req.itemName}</td>
+                    <td class="px-4 py-3 text-xs text-gray-500" title="${req.itemDescricao}">${(req.itemDescricao || '').substring(0, 40)}...</td>
+                    <td class="px-4 py-3 text-center text-xs">${linkHtml}</td>
+                    <td class="px-4 py-3 text-center">
+                        <div class="flex items-center justify-center gap-2">
+                            <button data-id="${req.id}" data-action="Aprovado" class="approval-btn bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-xs">Aprovar</button>
+                            <button data-id="${req.id}" data-action="Rejeitado" class="approval-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-md text-xs">Rejeitar</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function renderPurchaseHistory(purchaseRequests) {
+            const tbody = document.querySelector('#details-modal #purchase-history-table-body');
+            if (!tbody) return;
+            
+            const placeholder = document.querySelector('#details-modal #purchase-history-placeholder');
+            const filterSolicitante = document.getElementById('modal-filter-solicitante').value.toLowerCase();
+            const filterAprovador = document.getElementById('modal-filter-aprovador').value.toLowerCase();
+            const filterDate = document.getElementById('modal-filter-date').value;
+            tbody.innerHTML = '';
+
+            let finishedRequests = purchaseRequests
+                .filter(s => s.status === 'Entregue' || s.status === 'Rejeitado' || s.status === 'Aprovado' || s.status === 'Comprado')
+                .sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+            if (filterSolicitante) {
+                finishedRequests = finishedRequests.filter(req => req.solicitanteName.toLowerCase().includes(filterSolicitante));
+            }
+            if (filterAprovador) {
+                finishedRequests = finishedRequests.filter(req => req.aprovador && req.aprovador.toLowerCase().includes(filterAprovador));
+            }
+            if (filterDate) {
+                 finishedRequests = finishedRequests.filter(req => req.timestamp?.toDate().toISOString().slice(0, 10) === filterDate);
+            }
+
+            placeholder.classList.toggle('hidden', finishedRequests.length > 0);
+
+            const statusConfig = {
+                'Aprovado': { text: 'Aprovado', color: 'blue' },
+                'Comprado': { text: 'Comprado', color: 'indigo' },
+                'Entregue': { text: 'Entregue', color: 'green' },
+                'Rejeitado': { text: 'Rejeitado', color: 'red' }
+            };
+
+            finishedRequests.forEach(request => {
+                const statusInfo = statusConfig[request.status] || { text: request.status, color: 'gray' };
+                const tr = document.createElement('tr');
+                tr.className = 'border-b hover:bg-gray-50 cursor-pointer request-row';
+                tr.dataset.requestId = request.id;
+
+                tr.innerHTML = `
+                    <td class="px-4 py-3 text-gray-600 whitespace-nowrap">${request.timestamp?.toDate().toLocaleDateString('pt-BR') || 'N/A'}</td>
+                    <td class="px-4 py-3 font-medium">${request.solicitanteName || 'N/A'}</td>
+                    <td class="px-4 py-3 font-semibold text-gray-800">${request.itemName || 'N/A'}</td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-${statusInfo.color}-100 text-${statusInfo.color}-800">${statusInfo.text}</span>
+                    </td>
+                    <td class="px-4 py-3">${request.aprovador || 'N/A'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('approvals-table-body').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.approval-btn');
+            if (btn) {
+                e.stopPropagation();
+                const requestId = btn.dataset.id;
+                const newStatus = btn.dataset.action;
+
+                if (confirm(`Tem certeza que deseja "${newStatus}" este pedido?`)) {
+                    try {
+                        const requestRef = doc(db, 'almoxarifado', appId, 'solicitacoes_compra', requestId);
+                        await updateDoc(requestRef, {
+                            status: newStatus,
+                            aprovador: currentSupervisor.name,
+                            dataAprovacao: serverTimestamp()
+                        });
+                        alert(`Pedido marcado como ${newStatus}!`);
+                    } catch (error) {
+                        console.error("Erro ao atualizar status:", error);
+                        alert("Falha ao atualizar o status do pedido.");
+                    }
+                }
+            } else {
+                const row = e.target.closest('tr.request-row');
+                if (row) {
+                    showPurchaseRequestDetails(row.dataset.requestId);
+                }
+            }
+        });
+
+        function renderRetiradasChart(retiradas) {
+            const canvas = document.getElementById('retiradas-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            const counts = retiradas.reduce((acc, r) => {
+                const dateKey = new Date(r.dataRetirada).toISOString().slice(0, 10);
+                acc[dateKey] = (acc[dateKey] || 0) + 1;
+                return acc;
+            }, {});
+            
+            const sortedData = Object.entries(counts)
+                .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+                .map(([date, count]) => ({ x: date, y: count }));
+
+            if (retiradasChart) retiradasChart.destroy();
+            retiradasChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Nº de Retiradas',
+                        data: sortedData,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM/yyyy' }, grid: { display: false } },
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function renderCategoriasChart(itens, categories) {
+            const canvas = document.getElementById('categorias-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const countByCategory = categories.reduce((acc, cat) => ({...acc, [cat.name]: 0}), {'Sem Categoria': 0});
+            
+            itens.forEach(item => {
+                const category = categories.find(c => c.id === item.categoryId);
+                const categoryName = category ? category.name : 'Sem Categoria';
+                countByCategory[categoryName]++;
+            });
+
+            if (categoriasChart) categoriasChart.destroy();
+            categoriasChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(countByCategory),
+                    datasets: [{ data: Object.values(countByCategory), backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1', '#EC4899'] }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'top' } } }
+            });
+        }
+
+        // --- FUNÇÕES DO MODAL E EXPORTAÇÃO ---
+        function showDetailsModal(title, contentHtml) {
+            const modal = document.getElementById('details-modal');
+            document.getElementById('details-modal-title').textContent = title;
+            document.getElementById('details-modal-content').innerHTML = contentHtml;
+            modal.classList.remove('hidden');
+        }
+
+        function showPurchaseHistoryModal() {
+            const contentHtml = `
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                    <input type="text" id="modal-filter-solicitante" placeholder="Filtrar por solicitante..." class="p-2 border border-gray-300 rounded-md">
+                    <input type="text" id="modal-filter-aprovador" placeholder="Filtrar por aprovador..." class="p-2 border border-gray-300 rounded-md">
+                    <input type="date" id="modal-filter-date" class="p-2 border border-gray-300 rounded-md">
+                </div>
+                <div class="overflow-y-auto max-h-96">
+                    <table class="w-full text-sm">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                            <tr>
+                                <th class="px-4 py-2 text-left">Data</th>
+                                <th class="px-4 py-2 text-left">Solicitante</th>
+                                <th class="px-4 py-2 text-left">Item</th>
+                                <th class="px-4 py-2 text-center">Status</th>
+                                <th class="px-4 py-2 text-left">Aprovador</th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchase-history-table-body"></tbody>
+                    </table>
+                    <p id="purchase-history-placeholder" class="text-center py-8 text-gray-400">Nenhum histórico encontrado.</p>
+                </div>
+            `;
+            showDetailsModal('Histórico de Compras', contentHtml);
+
+            document.getElementById('modal-filter-solicitante').addEventListener('input', () => renderPurchaseHistory(rawData.purchaseRequests));
+            document.getElementById('modal-filter-aprovador').addEventListener('input', () => renderPurchaseHistory(rawData.purchaseRequests));
+            document.getElementById('modal-filter-date').addEventListener('input', () => renderPurchaseHistory(rawData.purchaseRequests));
+            
+            document.querySelector('#details-modal #purchase-history-table-body').addEventListener('click', (e) => {
+                const row = e.target.closest('tr.request-row');
+                if (row) {
+                    showPurchaseRequestDetails(row.dataset.requestId);
+                }
+            });
+
+            renderPurchaseHistory(rawData.purchaseRequests);
+        }
+
+        function showPurchaseRequestDetails(requestId) {
+            const request = rawData.purchaseRequests.find(r => r.id === requestId);
+            if (!request) {
+                alert('Detalhes não encontrados.');
+                return;
+            }
+
+            const statusClasses = { 
+                'Pendente de Aprovação': 'bg-gray-200 text-gray-800',
+                'Aprovado': 'bg-blue-100 text-blue-800',
+                'Rejeitado': 'bg-red-100 text-red-800',
+                'Em Análise': 'bg-yellow-100 text-yellow-800',
+                'Comprado': 'bg-indigo-100 text-indigo-800',
+                'Entregue': 'bg-green-100 text-green-800',
+                'Cancelado': 'bg-gray-200 text-gray-700'
+            };
+
+            const contentHtml = `
+                <div class="space-y-4 text-sm">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-gray-50 p-3 rounded-md">
+                            <p class="font-semibold text-gray-500">Item Solicitado</p>
+                            <p class="text-lg font-bold text-gray-800">${request.itemName} (Qtd: ${request.quantidade})</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-md">
+                            <p class="font-semibold text-gray-500">Status Atual</p>
+                            <p class="text-lg font-bold"><span class="px-3 py-1 rounded-full ${statusClasses[request.status] || ''}">${request.status}</span></p>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded-md">
+                        <p class="font-semibold text-gray-500">Descrição / Justificativa</p>
+                        <p class="text-gray-700 whitespace-pre-wrap">${request.itemDescricao}</p>
+                    </div>
+                     ${request.itemLink ? `
+                        <div class="bg-gray-50 p-3 rounded-md">
+                            <p class="font-semibold text-gray-500">Link de Referência</p>
+                            <a href="${request.itemLink}" target="_blank" class="text-blue-600 hover:underline break-all">${request.itemLink}</a>
+                        </div>` : ''
+                    }
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-gray-50 p-3 rounded-md">
+                            <p class="font-semibold text-gray-500">Solicitante</p>
+                            <p class="text-gray-700">${request.solicitanteName}</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-md">
+                            <p class="font-semibold text-gray-500">Data da Solicitação</p>
+                            <p class="text-gray-700">${request.timestamp?.toDate().toLocaleString('pt-BR') || 'N/A'}</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-md">
+                            <p class="font-semibold text-gray-500">Aprovador</p>
+                            <p class="text-gray-700">${request.aprovador || 'Aguardando'}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            showDetailsModal('Detalhes do Pedido de Compra', contentHtml);
+        }
+
+        //-- NOVO: Função para abrir o modal de itens com filtros --//
+        function showAllItemsModal() {
+            let categoryOptions = rawData.categories
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(cat => `<option value="${cat.id}">${cat.name}</option>`)
+                .join('');
+
+            const contentHtml = `
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <input type="text" id="modal-filter-item-name" placeholder="Filtrar por nome do item..." class="p-2 border border-gray-300 rounded-md">
+                    <select id="modal-filter-item-category" class="p-2 border border-gray-300 rounded-md">
+                        <option value="">Todas as Categorias</option>
+                        ${categoryOptions}
+                    </select>
+                </div>
+                <div id="all-items-table-container" class="overflow-y-auto max-h-96">
+                    <!-- A tabela será renderizada aqui -->
+                </div>
+            `;
+            showDetailsModal('Estoque Completo de Itens', contentHtml);
+
+            document.getElementById('modal-filter-item-name').addEventListener('input', () => renderAllItemsTable(rawData.itens, rawData.categories));
+            document.getElementById('modal-filter-item-category').addEventListener('change', () => renderAllItemsTable(rawData.itens, rawData.categories));
+            
+            renderAllItemsTable(rawData.itens, rawData.categories);
+        }
+
+        //-- ALTERADO: renderAllItemsTable agora renderiza em um container e aplica filtros --//
+        function renderAllItemsTable(itens, categories) {
+            const container = document.getElementById('all-items-table-container');
+            const isInModal = !!container;
+
+            const nameFilterValue = document.getElementById('modal-filter-item-name')?.value.toLowerCase() || '';
+            const categoryFilterValue = document.getElementById('modal-filter-item-category')?.value || '';
+
+            let filteredItens = itens;
+
+            if (isInModal) {
+                if (nameFilterValue) {
+                    filteredItens = filteredItens.filter(item => item.name.toLowerCase().includes(nameFilterValue));
+                }
+                if (categoryFilterValue) {
+                    filteredItens = filteredItens.filter(item => item.categoryId === categoryFilterValue);
+                }
+            }
+
+            if (!filteredItens || filteredItens.length === 0) {
+                const placeholder = '<p class="text-center text-gray-500 py-8">Nenhum item encontrado.</p>';
+                if (isInModal) container.innerHTML = placeholder;
+                return placeholder;
+            }
+            
+            const categoryMap = categories.reduce((map, cat) => ({...map, [cat.id]: cat.name}), {});
+            let tableHtml = `<table class="w-full text-sm">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Item</th>
+                        <th class="px-4 py-2 text-left">Categoria</th>
+                        <th class="px-4 py-2 text-center">Estoque Atual</th>
+                        <th class="px-4 py-2 text-center">Estoque Total</th>
+                    </tr>
+                </thead><tbody>`;
+            
+            filteredItens.sort((a, b) => a.name.localeCompare(b.name)).forEach(item => {
+                const categoryName = categoryMap[item.categoryId] || 'Sem Categoria';
+                tableHtml += `<tr class="border-b">
+                    <td class="px-4 py-3 font-medium">${item.name}</td>
+                    <td class="px-4 py-3 text-gray-600">${categoryName}</td>
+                    <td class="px-4 py-3 text-center font-semibold">${item.quantity}</td>
+                    <td class="px-4 py-3 text-center text-gray-600">${item.totalQuantity || 'N/A'}</td>
+                </tr>`;
+            });
+            tableHtml += `</tbody></table>`;
+
+            if (isInModal) {
+                container.innerHTML = tableHtml;
+            }
+            return tableHtml;
+        }
+
+        function renderPendingRetiradasTable(retiradas) {
+            if (!retiradas || retiradas.length === 0) return '<p class="text-center text-gray-500 py-8">Nenhuma retirada pendente.</p>';
+            let tableHtml = `<table class="w-full text-sm">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Colaborador</th>
+                        <th class="px-4 py-2 text-left">Itens</th>
+                        <th class="px-4 py-2 text-left">Data da Retirada</th>
+                        <th class="px-4 py-2 text-center">Status</th>
+                    </tr>
+                </thead><tbody>`;
+            
+            retiradas.sort((a, b) => new Date(b.dataRetirada) - new Date(a.dataRetirada)).forEach(retirada => {
+                const itemsHtml = retirada.itens.map(i => `<div>${i.quantidade}x ${i.itemName}</div>`).join('');
+                tableHtml += `<tr class="border-b">
+                    <td class="px-4 py-3 font-medium">${retirada.professorName}</td>
+                    <td class="px-4 py-3 text-xs">${itemsHtml}</td>
+                    <td class="px-4 py-3 text-gray-600">${new Date(retirada.dataRetirada + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                    <td class="px-4 py-3 text-center"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">${retirada.status}</span></td>
+                </tr>`;
+            });
+            tableHtml += `</tbody></table>`;
+            return tableHtml;
+        }
+
+        function renderActivePurchasesTable(purchases) {
+            if (!purchases || purchases.length === 0) return '<p class="text-center text-gray-500 py-8">Nenhuma solicitação de compra aprovada.</p>';
+            let tableHtml = `<table class="w-full text-sm">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Data</th>
+                        <th class="px-4 py-2 text-left">Solicitante</th>
+                        <th class="px-4 py-2 text-left">Item</th>
+                        <th class="px-4 py-2 text-center">Status</th>
+                    </tr>
+                </thead><tbody>`;
+
+            purchases.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0)).forEach(req => {
+                tableHtml += `<tr class="border-b">
+                    <td class="px-4 py-3 text-gray-600">${req.timestamp?.toDate().toLocaleDateString('pt-BR') || 'N/A'}</td>
+                    <td class="px-4 py-3 font-medium">${req.solicitanteName || 'N/A'}</td>
+                    <td class="px-4 py-3">${req.itemName || 'N/A'}</td>
+                    <td class="px-4 py-3 text-center"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">${req.status || 'Pendente'}</span></td>
+                </tr>`;
+            });
+            tableHtml += `</tbody></table>`;
+            return tableHtml;
+        }
+
+        function renderAllProfessorsTable(professores) {
+            if (!professores || professores.length === 0) return '<p class="text-center text-gray-500 py-8">Nenhum colaborador cadastrado.</p>';
+            let tableHtml = `<table class="w-full text-sm">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Nome</th>
+                        <th class="px-4 py-2 text-left">Matrícula</th>
+                        <th class="px-4 py-2 text-center">É Supervisor?</th>
+                    </tr>
+                </thead><tbody>`;
+
+            professores.sort((a, b) => a.name.localeCompare(b.name)).forEach(prof => {
+                const supervisorBadge = prof.isSupervisor ? '<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Sim</span>' : 'Não';
+                const nameContent = `<a href="#" class="professor-history-link text-blue-600 hover:underline" data-professor-id="${prof.id}" data-professor-name="${prof.name}">${prof.name}</a>`;
+                tableHtml += `<tr class="border-b">
+                    <td class="px-4 py-3 font-medium">${nameContent}</td>
+                    <td class="px-4 py-3 text-gray-600">${prof.matricula}</td>
+                    <td class="px-4 py-3 text-center">${supervisorBadge}</td>
+                </tr>`;
+            });
+            tableHtml += `</tbody></table>`;
+            return tableHtml;
+        }
+        
+        function showProfessorWithdrawalHistory(professorId, professorName) {
+            const professorRetiradas = rawData.retiradas.filter(r => r.professorId === professorId);
+            const content = renderPendingRetiradasTable(professorRetiradas);
+            showDetailsModal(`Histórico de Retiradas: ${professorName}`, content);
+        }
+
+        function downloadInventory() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const tableData = [];
+            const headers = ["Item", "Categoria", "Qtd. Atual", "Qtd. Total"];
+            const categoryMap = rawData.categories.reduce((map, cat) => ({...map, [cat.id]: cat.name}), {});
+
+            rawData.itens.sort((a, b) => a.name.localeCompare(b.name)).forEach(item => {
+                tableData.push([
+                    item.name,
+                    categoryMap[item.categoryId] || 'Sem Categoria',
+                    item.quantity,
+                    item.totalQuantity || 'N/A'
+                ]);
+            });
+
+            doc.text("Inventário Completo do Almoxarifado", 14, 16);
+            doc.autoTable({
+                head: [headers],
+                body: tableData,
+                startY: 20,
+                theme: 'grid',
+                headStyles: { fillColor: [41, 128, 185] }
+            });
+            doc.save(`inventario_completo_${new Date().toISOString().slice(0,10)}.pdf`);
+        }
+
+    </script>
+</body>
+</html>
